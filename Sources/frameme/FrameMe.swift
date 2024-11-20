@@ -32,8 +32,8 @@ struct FrameMe: ParsableCommand {
     @Option(help: "The output folder. By default framed screenshots are placed in the their original folder.")
     var output: String?
 
-    @Argument(help: "The frame to use.", completion: .file())
-    var frame: String
+    @Option(help: "The frame to use. If not provided, will attempt to find matching device bezel.")
+    var frame: String?
 
     @Argument(help: "The screenshots to process.")
     var screenshot: [String]
@@ -41,9 +41,33 @@ struct FrameMe: ParsableCommand {
     /// The meat and potatoes.
     mutating func run() throws {
         do {
-            // Load the frame.
-            guard let frameImage = CGImage.loadImage(filename: frame) else {
-                throw GenericError.failedToLoadFrame
+            // Load the frame
+            let frameImage: CGImage
+            
+            if let framePath = frame {
+                guard let loadedFrame = CGImage.loadImage(filename: framePath) else {
+                    throw GenericError.failedToLoadFrame
+                }
+                frameImage = loadedFrame
+            } else {
+                // Try to find matching bezel
+                let bezelsManager = try DeviceBezelsManager()
+                
+                // Load first screenshot to determine size
+                guard let firstScreenshotURL = parseInputFiles().first,
+                      let firstScreenshot = CGImage.loadImage(url: firstScreenshotURL) else {
+                    throw GenericError.failedToLoadImage("first screenshot")
+                }
+                
+                let size = CGSize(width: firstScreenshot.width, height: firstScreenshot.height)
+                guard let bezelPath = try bezelsManager.findBezel(forScreenshotSize: size) else {
+                    throw GenericError.noMatchingBezelFound
+                }
+                
+                guard let loadedFrame = CGImage.loadImage(url: bezelPath) else {
+                    throw GenericError.failedToLoadFrame
+                }
+                frameImage = loadedFrame
             }
 
             // Load the composite class.
@@ -98,6 +122,10 @@ struct FrameMe: ParsableCommand {
                     Logger.error("ERROR: The output specified does not exist or is not a directory.")
                 case .failedToLoadImage(let path):
                     Logger.error("ERROR: Failed to load screenshot at <\(path)>")
+                case .failedToLoadBezels:
+                    Logger.error("ERROR: Failed to load device bezels from repository.")
+                case .noMatchingBezelFound:
+                    Logger.error("ERROR: No matching device bezel found for screenshot dimensions.")
                 }
             } else {
                 Logger.error("ERROR: \(error.localizedDescription)")

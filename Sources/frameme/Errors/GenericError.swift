@@ -9,6 +9,8 @@ import Foundation
 
 enum GenericError: Error {
     case failedToLoadFrame
-    case failedToLoadImage(String)
     case failedToScanFolder
+    case failedToLoadImage(String)
+    case failedToLoadBezels
+    case noMatchingBezelFound
 }
